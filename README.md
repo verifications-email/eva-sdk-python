@@ -1,4 +1,4 @@
-# eva-email
+# verifications-email
 
 Official Python SDK for the **EVA Email Verification API**.
 
@@ -7,7 +7,7 @@ Single dependency (`httpx`). Works with Python 3.9+. Fully typed (`py.typed`).
 ## Installation
 
 ```bash
-pip install eva-email
+pip install verifications-email
 ```
 
 ## Quick Start

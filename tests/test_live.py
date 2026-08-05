@@ -1,4 +1,4 @@
-"""Live integration tests for the eva-email Python SDK.
+"""Live integration tests for the verifications-email Python SDK.
 
 Mirrors the JS/TS test-live.mjs — tests against a running EVA API instance.
 

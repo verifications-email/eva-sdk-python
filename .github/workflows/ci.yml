@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # tests/ are live-API integration tests (need a real key), so CI
+      # validates the package build instead of running them.
+      - run: python -m pip install --upgrade build twine
+      - run: python -m build
+      - run: twine check dist/*
