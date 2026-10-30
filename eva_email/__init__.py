@@ -12,6 +12,7 @@ Example::
 from .client import EvaClient
 from .errors import (
     AuthenticationError,
+    DailyLimitError,
     EvaError,
     NotFoundError,
     QuotaExceededError,
@@ -58,6 +59,7 @@ __all__ = [
     "WebhookSummary",
     # Errors
     "AuthenticationError",
+    "DailyLimitError",
     "EvaError",
     "NotFoundError",
     "QuotaExceededError",

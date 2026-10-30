@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import sys
+import uuid
 
 # Allow running from sdk/python/ directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -45,7 +46,7 @@ def main() -> None:
         d = result.data
         check(isinstance(d.email, str), "email is str")
         check(isinstance(d.score, int), "score is int")
-        check(d.risk in ("safe", "risky", "invalid"), f'risk is valid: "{d.risk}"')
+        check(d.risk in ("safe", "risky", "catchall", "invalid", "unknown"), f'risk is valid: "{d.risk}"')
         check(d.smtp_check in ("deliverable", "undeliverable", "risky", "unknown"), f'smtp_check is valid: "{d.smtp_check}"')
         check(isinstance(d.syntax_valid, bool), "syntax_valid is bool")
         check(isinstance(d.mx_found, bool), "mx_found is bool")
@@ -87,8 +88,22 @@ def main() -> None:
         print(f"  ERROR: {e}")
         failed += 1
 
-    # ── Test 4: Batch verification ──────────────────────────
-    print("\n[Test 4] Batch verification (POST /api/v1/verify/batch)")
+    # ── Test 4: Catch-all verdict is first-class ────────────
+    print("\n[Test 4] Catch-all verdict (random local part @google.com)")
+    try:
+        token = "zz" + uuid.uuid4().hex[:10]
+        d = eva.verify(f"{token}@google.com").data
+        check(d.is_catch_all is True, f"is_catch_all True: {d.is_catch_all}")
+        check(d.risk == "catchall", f'risk is "catchall": "{d.risk}"')
+        check(d.reason == "catch_all", f'reason is "catch_all": "{d.reason}"')
+        check(40 <= d.score <= 69, f"score in the 40-69 band: {d.score}")
+        print(f"  Score: {d.score}, Risk: {d.risk}, Reason: {d.reason}")
+    except Exception as e:
+        print(f"  ERROR: {e}")
+        failed += 1
+
+    # ── Test 5: Batch verification ──────────────────────────
+    print("\n[Test 5] Batch verification (POST /api/v1/verify/batch)")
     try:
         result = eva.verify_batch(["test@gmail.com", "fake@nonexistent-domain-xyz123.com"])
         d = result.data
@@ -102,8 +117,8 @@ def main() -> None:
         print(f"  ERROR: {e}")
         failed += 1
 
-    # ── Test 5: Client-side batch validation ────────────────
-    print("\n[Test 5] Client-side batch limit validation")
+    # ── Test 6: Client-side batch validation ────────────────
+    print("\n[Test 6] Client-side batch limit validation")
     try:
         eva.verify_batch([])
         print("  FAIL: Should have raised for empty list")
@@ -118,8 +133,8 @@ def main() -> None:
     except EvaError as e:
         check(e.code == "INVALID_INPUT", f'code is INVALID_INPUT: "{e.code}"')
 
-    # ── Test 6: Domain deliverability ───────────────────────
-    print("\n[Test 6] Domain deliverability (GET /api/v1/domain/:domain/deliverability)")
+    # ── Test 7: Domain deliverability ───────────────────────
+    print("\n[Test 7] Domain deliverability (GET /api/v1/domain/:domain/deliverability)")
     try:
         result = eva.get_domain_deliverability("gmail.com")
         d = result.data
@@ -134,8 +149,8 @@ def main() -> None:
         print(f"  ERROR: {e}")
         failed += 1
 
-    # ── Test 7: Invalid API key ─────────────────────────────
-    print("\n[Test 7] Authentication error with invalid API key")
+    # ── Test 8: Invalid API key ─────────────────────────────
+    print("\n[Test 8] Authentication error with invalid API key")
     try:
         bad_client = EvaClient(api_key="eva_invalid_key_here", base_url=BASE_URL, max_retries=0)
         bad_client.verify("test@gmail.com")
@@ -146,8 +161,8 @@ def main() -> None:
         check(e.status == 401, f"status is 401: {e.status}")
         check(e.code == "UNAUTHORIZED", f'code is UNAUTHORIZED: "{e.code}"')
 
-    # ── Test 8: List bulk jobs ──────────────────────────────
-    print("\n[Test 8] List bulk jobs (GET /api/v1/verify/async)")
+    # ── Test 9: List bulk jobs ──────────────────────────────
+    print("\n[Test 9] List bulk jobs (GET /api/v1/verify/async)")
     try:
         result = eva.list_bulk_jobs()
         check(isinstance(result.data, list), "returns list")
@@ -157,8 +172,8 @@ def main() -> None:
         print(f"  ERROR: {e}")
         failed += 1
 
-    # ── Test 9: Get non-existent bulk job ───────────────────
-    print("\n[Test 9] Get non-existent bulk job (404)")
+    # ── Test 10: Get non-existent bulk job ──────────────────
+    print("\n[Test 10] Get non-existent bulk job (404)")
     try:
         eva.get_bulk_job("00000000-0000-0000-0000-000000000000")
         print("  FAIL: Should have raised NotFoundError")
@@ -167,8 +182,8 @@ def main() -> None:
         check(isinstance(e, NotFoundError) or e.status == 404, "raises not found error")
         check(e.status == 404, f"status is 404: {e.status}")
 
-    # ── Test 10: Context manager ────────────────────────────
-    print("\n[Test 10] Context manager support")
+    # ── Test 11: Context manager ────────────────────────────
+    print("\n[Test 11] Context manager support")
     try:
         with EvaClient(api_key=API_KEY, base_url=BASE_URL, max_retries=1) as client:
             r = client.verify("test@gmail.com")

@@ -33,7 +33,7 @@ print(result.rate_limit.remaining)  # 199
 - Async bulk file upload (CSV/XLSX) with polling
 - Domain deliverability reports (SPF/DKIM/DMARC/blacklists)
 - Webhook signature verification (HMAC-SHA256)
-- Auto-retry with exponential backoff on 429/5xx
+- Auto-retry with exponential backoff on 429/5xx (a used-up daily or monthly allowance is not retried)
 - Rate limit info on every response
 - Full type annotations (PEP 561)
 
@@ -45,7 +45,7 @@ print(result.rate_limit.remaining)  # 199
 eva = EvaClient(
     api_key="eva_...",                        # Required
     base_url="https://verifications.email",     # Default
-    timeout=30.0,                             # Seconds (default: 30)
+    timeout=100.0,                            # Seconds (default: 100)
     max_retries=3,                            # Retries on 429/5xx (default: 3)
     retry_delay=1000.0,                       # Base retry delay in ms (default: 1000)
 )
@@ -66,7 +66,7 @@ result = eva.verify("user@gmail.com")
 
 print(result.data.email)                  # "user@gmail.com"
 print(result.data.score)                  # 0-100
-print(result.data.risk)                   # "safe" | "risky" | "invalid"
+print(result.data.risk)                   # "safe" | "risky" | "catchall" | "invalid" | "unknown"
 print(result.data.smtp_check)             # "deliverable" | "undeliverable" | "risky" | "unknown"
 print(result.data.is_disposable)          # False
 print(result.data.is_role_account)        # False
@@ -165,7 +165,7 @@ event = parse_webhook_event(
 )
 
 print(event["job_id"])
-print(event["summary"])  # {"safe": 800, "risky": 150, "invalid": 50}
+print(event["summary"])  # {"safe": 800, "risky": 100, "catchall": 50, "invalid": 50, "unknown": 12}
 ```
 
 ### Flask Example
@@ -222,8 +222,13 @@ except NotFoundError:
     # Resource not found (e.g., invalid bulk job ID)
     print("Not found")
 except EvaError as e:
-    # Other API error
-    print(e.message, e.code, e.status)
+    if e.code == "PAID_PLAN_REQUIRED":
+        # Free account without credits: API access needs a plan or a credit
+        # pack. Its 300 free checks run in the dashboard.
+        print("Pick a plan or a credit pack to use the API.")
+    else:
+        # Other API error
+        print(e.message, e.code, e.status)
 ```
 
 ## Rate Limit Info
@@ -245,14 +250,27 @@ print(result.rate_limit.credits_remaining)  # None or int (PAYG credits)
 |--------|------|---------|-------------|
 | `api_key` | `str` | — | **Required.** Your EVA API key. |
 | `base_url` | `str` | `https://verifications.email` | API base URL. |
-| `timeout` | `float` | `30.0` | Request timeout (seconds). |
-| `max_retries` | `int` | `3` | Max retries on 429/5xx errors. |
+| `timeout` | `float` | `100.0` | Request timeout (seconds). A check can take up to 90 s when the mail server holds its reply. |
+| `max_retries` | `int` | `3` | Max retries on 429/5xx errors. `DAILY_LIMIT` and `QUOTA_EXCEEDED` are never retried. |
 | `retry_delay` | `float` | `1000.0` | Base delay (ms) for exponential backoff. |
 
 ## Requirements
 
 - Python >= 3.9
 - httpx >= 0.27
+
+## Changes
+
+### Unreleased
+
+- A 429 with `DAILY_LIMIT` raises `DailyLimitError` at once, and `QUOTA_EXCEEDED` raises `QuotaExceededError` at once; neither is retried any more. `RATE_LIMITED` is still retried.
+- Added `DAILY_LIMIT` to `ErrorCode`.
+- Added `PAID_PLAN_REQUIRED` to `ErrorCode`. A Free account without credits gets 403 `PAID_PLAN_REQUIRED` from every API call, raised at once as `EvaError` with that code; any plan or credit pack lifts it.
+
+### 0.3.0
+
+- Removed `yahoo_api_verified`, `yahoo_api_error`, `entra_gct_verified` and `entra_gct_error` from `VerificationResult`. They were undocumented diagnostics that never changed a verdict; the score and `reason` already carry what they said.
+- Added `is_locked` to `VerificationResult` and `BulkJobResult`: the provider reported the account locked (temporary or permanent lockout).
 
 ## License
 

@@ -62,6 +62,30 @@ class QuotaExceededError(EvaError):
         super().__init__(message, code="QUOTA_EXCEEDED", status=429, rate_limit=rate_limit)
 
 
+class DailyLimitError(EvaError):
+    """Free plan without credits used its checks for the day (429 DAILY_LIMIT).
+
+    It is never retried: the limit resets at 00:00 UTC, ``retry_after``
+    seconds from the response, and any plan or credit pack removes it.
+    ``limit`` and ``remaining`` come from ``X-Daily-Limit`` and
+    ``X-Daily-Remaining``; ``remaining`` is above 0 when a batch was larger
+    than what is left today, and a batch of at most ``remaining`` addresses
+    still goes through.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        rate_limit: Optional[RateLimitInfo] = None,
+        limit: Optional[int] = None,
+        remaining: Optional[int] = None,
+    ) -> None:
+        super().__init__(message, code="DAILY_LIMIT", status=429, rate_limit=rate_limit)
+        self.retry_after = rate_limit.retry_after if rate_limit is not None else None
+        self.limit = limit
+        self.remaining = remaining
+
+
 class AuthenticationError(EvaError):
     """Invalid or missing API key (401)."""
 

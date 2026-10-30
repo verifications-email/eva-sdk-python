@@ -10,7 +10,7 @@ import httpx
 
 # ── Literal union types ─────────────────────────────────────────
 
-Risk = Literal["safe", "risky", "invalid"]
+Risk = Literal["safe", "risky", "catchall", "invalid", "unknown"]
 SmtpCheck = Literal["deliverable", "undeliverable", "risky", "unknown"]
 SpamTrapRisk = Literal["low", "medium", "high"]
 Grade = Literal["A", "B", "C", "D", "F"]
@@ -19,8 +19,10 @@ ErrorCode = Literal[
     "INVALID_INPUT",
     "UNAUTHORIZED",
     "FORBIDDEN",
+    "PAID_PLAN_REQUIRED",
     "RATE_LIMITED",
     "QUOTA_EXCEEDED",
+    "DAILY_LIMIT",
     "NOT_FOUND",
     "INTERNAL_ERROR",
 ]
@@ -77,8 +79,9 @@ class VerificationResult:
     is_catch_all: bool
     is_free_provider: bool
     spam_trap_risk: str  # SpamTrapRisk literal
-    catch_all_confidence: Optional[int] = None
-    """Catch-all confidence (0–100) when is_catch_all is True, else None."""
+    reason: Optional[str] = None
+    """Why the verdict landed where it did (e.g. 'catch_all', 'no_mx',
+    'greylisted'); None for a plain deliverable."""
     suggested_correction: Optional[str] = None
     """Suggested domain correction (e.g. 'gmail.com' for 'gmial.com')."""
     domain_reputation_score: Optional[int] = None
@@ -86,6 +89,8 @@ class VerificationResult:
     deliverability: Optional[DomainDeliverability] = None
     smtp_provider: Optional[str] = None
     is_disabled: Optional[bool] = None
+    is_locked: Optional[bool] = None
+    """The provider reported the account locked (temporary or permanent lockout)."""
     is_full_inbox: Optional[bool] = None
     is_tarpitted: Optional[bool] = None
     response_latency_ms: Optional[int] = None
@@ -94,11 +99,6 @@ class VerificationResult:
     is_dbeb: Optional[bool] = None
     """Double Bounce Email Box detection."""
     is_accept_all: Optional[bool] = None
-    yahoo_api_verified: Optional[bool] = None
-    yahoo_api_error: Optional[str] = None
-    entra_gct_verified: Optional[bool] = None
-    """Microsoft Entra GetCredentialType verification."""
-    entra_gct_error: Optional[str] = None
 
 
 # ── Batch ────────────────────────────────────────────────────────
@@ -146,6 +146,9 @@ class BulkJobResult:
     spam_trap_risk: str
     domain_reputation_score: Optional[int] = None
     suggested_correction: Optional[str] = None
+    is_locked: Optional[bool] = None
+    """The provider reported the account locked (temporary or permanent lockout).
+    None on jobs that finished before Oct 14 2026."""
 
 
 # ── Domain deliverability ────────────────────────────────────────
@@ -214,7 +217,9 @@ class DomainDeliverability:
 class WebhookSummary:
     safe: int
     risky: int
+    catchall: int
     invalid: int
+    unknown: int
 
 
 @dataclass
@@ -319,13 +324,14 @@ def parse_verification_result(data: dict[str, Any]) -> VerificationResult:
         is_catch_all=data.get("is_catch_all", False),
         is_free_provider=data.get("is_free_provider", False),
         spam_trap_risk=data.get("spam_trap_risk", "low"),
-        catch_all_confidence=data.get("catch_all_confidence"),
+        reason=data.get("reason"),
         suggested_correction=data.get("suggested_correction"),
         domain_reputation_score=data.get("domain_reputation_score"),
         mx_records=data.get("mx_records") or [],
         deliverability=_parse_deliverability(data.get("deliverability")),
         smtp_provider=data.get("smtp_provider"),
         is_disabled=data.get("is_disabled"),
+        is_locked=data.get("is_locked"),
         is_full_inbox=data.get("is_full_inbox"),
         is_tarpitted=data.get("is_tarpitted"),
         response_latency_ms=data.get("response_latency_ms"),
@@ -333,10 +339,6 @@ def parse_verification_result(data: dict[str, Any]) -> VerificationResult:
         is_default_catch_all=data.get("is_default_catch_all"),
         is_dbeb=data.get("is_dbeb"),
         is_accept_all=data.get("is_accept_all"),
-        yahoo_api_verified=data.get("yahoo_api_verified"),
-        yahoo_api_error=data.get("yahoo_api_error"),
-        entra_gct_verified=data.get("entra_gct_verified"),
-        entra_gct_error=data.get("entra_gct_error"),
     )
 
 
@@ -370,4 +372,5 @@ def parse_bulk_job_result(data: dict[str, Any]) -> BulkJobResult:
         spam_trap_risk=data.get("spam_trap_risk", "low"),
         domain_reputation_score=data.get("domain_reputation_score"),
         suggested_correction=data.get("suggested_correction"),
+        is_locked=data.get("is_locked"),
     )

@@ -49,7 +49,7 @@ class EvaClient:
         api_key: str,
         *,
         base_url: str = _DEFAULT_BASE_URL,
-        timeout: float = 30.0,
+        timeout: float = 100.0,
         max_retries: int = 3,
         retry_delay: float = 1000.0,
     ) -> None:
@@ -58,7 +58,8 @@ class EvaClient:
         Args:
             api_key: Your EVA API key (starts with ``eva_``).
             base_url: API base URL. Default: ``https://verifications.email``.
-            timeout: Request timeout in seconds. Default: ``30``.
+            timeout: Request timeout in seconds. Default: ``100``: a check can
+                take up to 90 s when the mail server holds its reply.
             max_retries: Max retries on 429/5xx. Default: ``3``.
             retry_delay: Base delay between retries in ms. Default: ``1000``.
         """

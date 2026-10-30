@@ -11,6 +11,7 @@ import httpx
 
 from .errors import (
     AuthenticationError,
+    DailyLimitError,
     EvaError,
     NotFoundError,
     QuotaExceededError,
@@ -52,16 +53,30 @@ def _is_retryable(status_code: int) -> bool:
     return status_code == 429 or status_code >= 500
 
 
+# 429 codes no retry can fix: the day's or the month's allowance is used up,
+# and Retry-After can be most of a day away.
+_NON_RETRYABLE_429_CODES = frozenset({"DAILY_LIMIT", "QUOTA_EXCEEDED"})
+
+
 def _to_typed_error(
     status: int,
     message: str,
     code: str,
     rate_limit: RateLimitInfo,
+    headers: Optional[httpx.Headers] = None,
 ) -> EvaError:
     if code == "RATE_LIMITED":
         return RateLimitError(message, rate_limit.retry_after or 60, rate_limit)
     if code == "QUOTA_EXCEEDED":
         return QuotaExceededError(message, rate_limit)
+    if code == "DAILY_LIMIT":
+        h = headers if headers is not None else httpx.Headers()
+        return DailyLimitError(
+            message,
+            rate_limit,
+            limit=_int_or_none(h.get("X-Daily-Limit")),
+            remaining=_int_or_none(h.get("X-Daily-Remaining")),
+        )
     if code == "UNAUTHORIZED":
         return AuthenticationError(message)
     if code == "NOT_FOUND":
@@ -142,15 +157,18 @@ def request(
         except Exception:
             pass
 
-        # Retryable?
-        if _is_retryable(resp.status_code) and attempt < max_retries:
+        # Retryable? Never a used-up daily or monthly allowance.
+        retryable = _is_retryable(resp.status_code) and not (
+            resp.status_code == 429 and error_code in _NON_RETRYABLE_429_CODES
+        )
+        if retryable and attempt < max_retries:
             if resp.status_code == 429 and rate_limit.retry_after:
                 server_wait = rate_limit.retry_after * 1000
                 our_wait = retry_delay * (2 ** attempt) * (1 + random.random() * 0.25)
                 time.sleep(min(server_wait, our_wait) / 1000.0)
             continue
 
-        raise _to_typed_error(resp.status_code, error_message, error_code, rate_limit)
+        raise _to_typed_error(resp.status_code, error_message, error_code, rate_limit, resp.headers)
 
     # Should never reach here
     if last_error:
